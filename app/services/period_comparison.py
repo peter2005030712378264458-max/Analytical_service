@@ -14,6 +14,64 @@ from app.services.z_table import ZTable, get_z_table
 
 
 HYPOTHESIS = "H0: среднее потребление в двух периодах одинаковое"
+ALTERNATIVE_HYPOTHESES = {
+    "two_sided": "H1: среднее потребление в двух периодах различается",
+    "greater": "H1: среднее потребление первого периода больше второго",
+    "less": "H1: среднее потребление первого периода меньше второго",
+}
+DECISION_RULES = {
+    "two_sided": "abs(z_statistic) > z_critical",
+    "greater": "z_statistic > z_critical",
+    "less": "z_statistic < -z_critical",
+}
+
+
+def _rejects_null(alternative: str, z_statistic: float, z_critical: float) -> bool:
+    if alternative == "two_sided":
+        return abs(z_statistic) > z_critical
+    if alternative == "greater":
+        return z_statistic > z_critical
+    return z_statistic < -z_critical
+
+
+def _build_conclusion(alternative: str, reject_null: bool, alpha: float, *, zero_standard_error: bool = False) -> str:
+    if zero_standard_error:
+        return (
+            f"Нет оснований отвергнуть нулевую гипотезу для выбранной альтернативной гипотезы: "
+            f"средние равны, а стандартная ошибка равна нулю при alpha = {alpha:g}."
+        )
+
+    if alternative == "two_sided":
+        if reject_null:
+            return (
+                f"Нулевая гипотеза отвергается: среднее потребление в выбранных периодах "
+                f"статистически значимо различается при alpha = {alpha:g}."
+            )
+        return (
+            f"Нет оснований отвергнуть нулевую гипотезу: статистически значимого различия "
+            f"среднего потребления при alpha = {alpha:g} не обнаружено."
+        )
+
+    if alternative == "greater":
+        if reject_null:
+            return (
+                f"Нулевая гипотеза отвергается: среднее потребление первого периода "
+                f"статистически значимо больше второго при alpha = {alpha:g}."
+            )
+        return (
+            f"Нет оснований отвергнуть нулевую гипотезу: не обнаружено статистически значимого "
+            f"подтверждения, что среднее потребление первого периода больше второго при alpha = {alpha:g}."
+        )
+
+    if reject_null:
+        return (
+            f"Нулевая гипотеза отвергается: среднее потребление первого периода "
+            f"статистически значимо меньше второго при alpha = {alpha:g}."
+        )
+    return (
+        f"Нет оснований отвергнуть нулевую гипотезу: не обнаружено статистически значимого "
+        f"подтверждения, что среднее потребление первого периода меньше второго при alpha = {alpha:g}."
+    )
 
 
 def _period_bounds(period: PeriodInput, timezone_name: str) -> tuple[datetime, datetime]:
@@ -108,7 +166,7 @@ def build_period_comparison_response(
     period_2: PeriodStats,
     z_table: ZTable | None = None,
 ) -> PeriodComparisonResponse:
-    lookup = (z_table or get_z_table()).lookup_critical(request.alpha)
+    lookup = (z_table or get_z_table()).lookup_critical(request.alpha, two_sided=request.alternative == "two_sided")
     z_critical = lookup.matched_z
 
     for stats in (period_1, period_2):
@@ -125,10 +183,7 @@ def build_period_comparison_response(
         if difference == 0:
             z_statistic = 0.0
             reject_null = False
-            conclusion = (
-                f"Нет оснований отвергнуть нулевую гипотезу: средние равны, "
-                f"а стандартная ошибка равна нулю при alpha = {request.alpha:g}."
-            )
+            conclusion = _build_conclusion(request.alternative, reject_null, request.alpha, zero_standard_error=True)
         else:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -136,21 +191,14 @@ def build_period_comparison_response(
             )
     else:
         z_statistic = difference / standard_error
-        reject_null = abs(z_statistic) > z_critical
-        if reject_null:
-            conclusion = (
-                f"Нулевая гипотеза отвергается: среднее потребление в выбранных периодах "
-                f"статистически значимо различается при alpha = {request.alpha:g}."
-            )
-        else:
-            conclusion = (
-                f"Нет оснований отвергнуть нулевую гипотезу: статистически значимого различия "
-                f"среднего потребления при alpha = {request.alpha:g} не обнаружено."
-            )
+        reject_null = _rejects_null(request.alternative, z_statistic, z_critical)
+        conclusion = _build_conclusion(request.alternative, reject_null, request.alpha)
 
     return PeriodComparisonResponse(
         hypothesis=HYPOTHESIS,
-        alternative="two_sided",
+        alternative=request.alternative,
+        alternative_hypothesis=ALTERNATIVE_HYPOTHESES[request.alternative],
+        decision_rule=DECISION_RULES[request.alternative],
         alpha=request.alpha,
         metric=request.metric,
         unit="kW",

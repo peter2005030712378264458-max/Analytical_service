@@ -6,6 +6,9 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
+AlternativeHypothesis = Literal["two_sided", "greater", "less"]
+
+
 class PeriodInput(BaseModel):
     date_from: date
     date_to: date
@@ -21,6 +24,7 @@ class PeriodComparisonRequest(BaseModel):
     period_1: PeriodInput
     period_2: PeriodInput
     alpha: float = Field(default=0.05, gt=0, lt=1)
+    alternative: AlternativeHypothesis = "two_sided"
     data_names: list[str] | None = None
     metric: Literal["active_power_w_avg"] = "active_power_w_avg"
 
@@ -71,7 +75,9 @@ class ZTableLookup(BaseModel):
 
 class PeriodComparisonResponse(BaseModel):
     hypothesis: str
-    alternative: Literal["two_sided"]
+    alternative: AlternativeHypothesis
+    alternative_hypothesis: str
+    decision_rule: str
     alpha: float
     metric: Literal["active_power_w_avg"]
     unit: Literal["kW"]

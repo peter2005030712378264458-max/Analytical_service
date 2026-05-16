@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from fastapi import HTTPException
 
 from app.services.z_table import ZTable
@@ -10,6 +11,14 @@ def test_alpha_005_returns_196():
 
     assert lookup.matched_z == 1.96
     assert lookup.matched_cdf == 0.975
+
+
+def test_one_sided_alpha_005_returns_165():
+    lookup = ZTable().lookup_critical(0.05, two_sided=False)
+
+    assert lookup.target_cdf == pytest.approx(0.95)
+    assert lookup.matched_z == 1.65
+    assert lookup.matched_cdf == 0.95053
 
 
 def test_alpha_001_returns_329():

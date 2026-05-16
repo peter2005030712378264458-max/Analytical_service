@@ -51,11 +51,11 @@ class ZTable:
             raise ValueError("Z table is empty")
         return rows
 
-    def lookup_critical(self, alpha: float) -> ZCriticalLookup:
+    def lookup_critical(self, alpha: float, *, two_sided: bool = True) -> ZCriticalLookup:
         if not 0 < alpha < 1:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="alpha must be between 0 and 1")
 
-        target_cdf = 1 - alpha / 2
+        target_cdf = 1 - alpha / 2 if two_sided else 1 - alpha
         for row in self.rows:
             if row.cdf >= target_cdf:
                 return ZCriticalLookup(
